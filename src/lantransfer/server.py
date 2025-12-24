@@ -128,63 +128,72 @@ class TransferServer:
         except json.JSONDecodeError:
             return web.json_response({"error": "Invalid JSON"}, status=400)
 
-        filename = data.get("filename")
-        total_size = data.get("size")
-        expected_hash = data.get("hash", "")
-        resume_id = data.get("resume_id")
+        try:
+            filename = data.get("filename")
+            total_size = data.get("size")
+            expected_hash = data.get("hash", "")
+            resume_id = data.get("resume_id")
 
-        if not filename or not total_size:
-            return web.json_response(
-                {"error": "Missing required fields: filename, size"},
-                status=400,
+            if not filename or not total_size:
+                return web.json_response(
+                    {"error": "Missing required fields: filename, size"},
+                    status=400,
+                )
+
+            # Check for existing transfer to resume
+            if resume_id and resume_id in self._transfers:
+                existing = self._transfers[resume_id]
+                if existing.filename == filename and existing.total_size == total_size:
+                    return web.json_response({
+                        "transfer_id": resume_id,
+                        "resume_offset": existing.received_bytes,
+                        "status": "resuming",
+                    })
+
+            # Ensure download directory exists
+            self.download_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create new transfer
+            transfer_id = generate_transfer_id()
+            # Sanitize filename to prevent path traversal
+            safe_filename = Path(filename).name
+            temp_path = self.download_dir / f".{transfer_id}_{safe_filename}.part"
+            final_path = self.download_dir / safe_filename
+
+            # Handle filename conflicts
+            counter = 1
+            while final_path.exists():
+                stem = Path(safe_filename).stem
+                suffix = Path(safe_filename).suffix
+                final_path = self.download_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+
+            transfer = IncomingTransfer(
+                transfer_id=transfer_id,
+                filename=safe_filename,
+                total_size=total_size,
+                expected_hash=expected_hash,
+                temp_path=temp_path,
+                final_path=final_path,
             )
 
-        # Check for existing transfer to resume
-        if resume_id and resume_id in self._transfers:
-            existing = self._transfers[resume_id]
-            if existing.filename == filename and existing.total_size == total_size:
-                return web.json_response({
-                    "transfer_id": resume_id,
-                    "resume_offset": existing.received_bytes,
-                    "status": "resuming",
-                })
+            self._transfers[transfer_id] = transfer
 
-        # Create new transfer
-        transfer_id = generate_transfer_id()
-        temp_path = self.download_dir / f".{transfer_id}_{filename}.part"
-        final_path = self.download_dir / filename
+            # Create empty temp file
+            async with aiofiles.open(temp_path, "wb") as f:
+                pass
 
-        # Handle filename conflicts
-        counter = 1
-        while final_path.exists():
-            stem = Path(filename).stem
-            suffix = Path(filename).suffix
-            final_path = self.download_dir / f"{stem}_{counter}{suffix}"
-            counter += 1
+            if self.on_transfer_started:
+                self.on_transfer_started(transfer)
 
-        transfer = IncomingTransfer(
-            transfer_id=transfer_id,
-            filename=filename,
-            total_size=total_size,
-            expected_hash=expected_hash,
-            temp_path=temp_path,
-            final_path=final_path,
-        )
+            return web.json_response({
+                "transfer_id": transfer_id,
+                "resume_offset": 0,
+                "status": "ready",
+            })
 
-        self._transfers[transfer_id] = transfer
-
-        # Create empty temp file
-        async with aiofiles.open(temp_path, "wb") as f:
-            pass
-
-        if self.on_transfer_started:
-            self.on_transfer_started(transfer)
-
-        return web.json_response({
-            "transfer_id": transfer_id,
-            "resume_offset": 0,
-            "status": "ready",
-        })
+        except Exception as e:
+            return web.json_response({"error": f"Server error: {str(e)}"}, status=500)
 
     async def _handle_chunk(self, request: web.Request) -> web.Response:
         """Receive a file chunk."""

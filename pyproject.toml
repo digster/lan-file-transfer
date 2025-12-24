@@ -9,7 +9,7 @@ authors = [{ name = "LAN Transfer Team" }]
 keywords = ["file-transfer", "lan", "network", "gui", "cross-platform"]
 
 dependencies = [
-    "flet>=0.25.0",
+    "flet==0.28.2",  # Pinned: FilePicker bug in 0.28.3
     "aiohttp>=3.9.0",
     "zeroconf>=0.136.0",
     "aiofiles>=24.1.0",

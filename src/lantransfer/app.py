@@ -493,7 +493,10 @@ class LANTransferApp:
             )
         )
 
-        # Setup drag and drop
+        # Setup drag and drop from OS
+        self.page.on_file_drop = self._on_file_drop
+        self.page.on_file_drag_enter = self._on_file_drag_enter
+        self.page.on_file_drag_leave = self._on_file_drag_leave
         self.page.on_keyboard_event = self._handle_keyboard
 
     def _on_peer_added(self, peer: Peer):
@@ -585,39 +588,49 @@ class LANTransferApp:
 
     def _show_picker_dialog(self):
         """Show dialog to choose between file or folder picker."""
-
-        def close_dialog(e):
-            dialog.open = False
-            self.page.update()
-
-        def pick_files(e):
-            close_dialog(e)
-            self._file_picker.pick_files(
-                allow_multiple=True,
-                dialog_title="Select files to send",
-            )
-
-        def pick_folder(e):
-            close_dialog(e)
-            self._file_picker.get_directory_path(
-                dialog_title="Select folder to send",
-            )
-
-        dialog = ft.AlertDialog(
+        self._picker_dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text("What would you like to send?"),
             content=ft.Text("Choose to send individual files or an entire folder."),
             actions=[
-                ft.TextButton("Files", on_click=pick_files),
-                ft.TextButton("Folder", on_click=pick_folder),
-                ft.TextButton("Cancel", on_click=close_dialog),
+                ft.TextButton("Files", on_click=self._pick_files_action),
+                ft.TextButton("Folder", on_click=self._pick_folder_action),
+                ft.TextButton("Cancel", on_click=self._close_picker_dialog),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
 
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        self.page.open(self._picker_dialog)
+
+    def _close_picker_dialog(self, e=None):
+        """Close the picker dialog."""
+        if hasattr(self, '_picker_dialog') and self._picker_dialog:
+            self.page.close(self._picker_dialog)
+
+    async def _pick_files_action_async(self):
+        """Handle picking files asynchronously."""
+        self._close_picker_dialog()
+        await asyncio.sleep(0.1)  # Small delay to let dialog close
+        self._file_picker.pick_files(
+            allow_multiple=True,
+            dialog_title="Select files to send",
+        )
+
+    def _pick_files_action(self, e):
+        """Handle picking files."""
+        self.page.run_task(self._pick_files_action_async)
+
+    async def _pick_folder_action_async(self):
+        """Handle picking a folder asynchronously."""
+        self._close_picker_dialog()
+        await asyncio.sleep(0.1)  # Small delay to let dialog close
+        self._file_picker.get_directory_path(
+            dialog_title="Select folder to send",
+        )
+
+    def _pick_folder_action(self, e):
+        """Handle picking a folder."""
+        self.page.run_task(self._pick_folder_action_async)
 
     def _on_files_picked(self, e: ft.FilePickerResultEvent):
         """Called when files or folder are picked."""
@@ -659,6 +672,56 @@ class LANTransferApp:
             subprocess.run(["open", str(downloads)])
         elif sys.platform == "linux":
             subprocess.run(["xdg-open", str(downloads)])
+
+    def _on_file_drag_enter(self, e: ft.ControlEvent):
+        """Handle files being dragged over the window."""
+        # Highlight drop zone
+        self._drop_zone.bgcolor = COLORS["surface_variant"]
+        self._drop_zone.border = ft.border.all(
+            2,
+            COLORS["primary"] if self._selected_peer else COLORS["warning"],
+        )
+        self._drop_zone.content.controls[0].color = COLORS["primary"]
+        self._drop_zone.content.controls[1].value = "Drop files to send"
+        self.page.update()
+
+    def _on_file_drag_leave(self, e: ft.ControlEvent):
+        """Handle files leaving the drag area."""
+        # Reset drop zone appearance
+        self._drop_zone.bgcolor = COLORS["surface"]
+        self._drop_zone.content.controls[0].color = COLORS["text_secondary"]
+        self._drop_zone.content.controls[1].value = "Drop files here or click to browse"
+        self._update_drop_zone()
+        self.page.update()
+
+    def _on_file_drop(self, e: ft.ControlEvent):
+        """Handle files dropped from the OS."""
+        # Reset drop zone appearance
+        self._drop_zone.bgcolor = COLORS["surface"]
+        self._drop_zone.content.controls[0].color = COLORS["text_secondary"]
+        self._drop_zone.content.controls[1].value = "Drop files here or click to browse"
+        self._update_drop_zone()
+
+        if not self._selected_peer:
+            self.page.show_snack_bar(
+                ft.SnackBar(
+                    content=ft.Text("Please select a device first"),
+                    bgcolor=COLORS["warning"],
+                )
+            )
+            self.page.update()
+            return
+
+        if not self._transfer_manager:
+            return
+
+        # Queue each dropped file/folder for transfer
+        for file_path_str in e.files:
+            file_path = Path(file_path_str)
+            if file_path.exists():
+                self._transfer_manager.queue_send(file_path, self._selected_peer)
+
+        self.page.update()
 
     def _handle_keyboard(self, e: ft.KeyboardEvent):
         """Handle keyboard events."""

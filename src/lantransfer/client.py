@@ -47,6 +47,10 @@ class OutgoingTransfer:
     error: str | None = None
     retry_count: int = 0
     speed: float = 0.0  # bytes per second
+    # Internal: the original path used to queue this transfer (for folder transfers, this is the folder path)
+    original_path: Path | None = None
+    # Internal: the key used in _cancel_flags and _active_transfers
+    _transfer_key: str = ""
 
     @property
     def progress(self) -> float:
@@ -73,6 +77,7 @@ class TransferClient:
     on_transfer_progress: Callable[[OutgoingTransfer], None] | None = None
     on_transfer_completed: Callable[[OutgoingTransfer], None] | None = None
     on_transfer_failed: Callable[[OutgoingTransfer, str], None] | None = None
+    on_transfer_cancelled: Callable[[OutgoingTransfer], None] | None = None
 
     _active_transfers: dict[str, OutgoingTransfer] = field(
         default_factory=dict, init=False, repr=False
@@ -134,8 +139,8 @@ class TransferClient:
                 tarball_path,
             )
 
-            # Send the tarball
-            transfer = await self.send_file(tarball_path, peer_url)
+            # Send the tarball, passing the original folder path for matching
+            transfer = await self.send_file(tarball_path, peer_url, original_path=folder_path)
 
             # Update filename to show it was a folder
             transfer.file_path = folder_path
@@ -159,6 +164,7 @@ class TransferClient:
         file_path: Path,
         peer_url: str,
         resume_id: str | None = None,
+        original_path: Path | None = None,
     ) -> OutgoingTransfer:
         """
         Send a file to a peer.
@@ -167,6 +173,7 @@ class TransferClient:
             file_path: Path to the file to send
             peer_url: Base URL of the peer (e.g., http://192.168.1.42:8765)
             resume_id: Optional transfer ID to resume an interrupted transfer
+            original_path: For folder transfers, the original folder path (used for matching)
         
         Returns:
             OutgoingTransfer object with final status
@@ -177,18 +184,33 @@ class TransferClient:
         if not file_path.is_file():
             raise ValueError(f"Not a file: {file_path}")
 
+        peer_url = peer_url.rstrip("/")
+        
+        # Use original_path for the transfer key if provided (folder transfers)
+        # This allows proper matching and cancellation
+        key_path = original_path if original_path else file_path
+        transfer_key = f"{peer_url}:{key_path}"
+        
         # Create transfer object
         transfer = OutgoingTransfer(
             file_path=file_path,
-            peer_url=peer_url.rstrip("/"),
+            peer_url=peer_url,
             total_size=file_path.stat().st_size,
+            original_path=original_path if original_path else file_path,
+            _transfer_key=transfer_key,
         )
 
-        transfer_key = f"{peer_url}:{file_path}"
         self._active_transfers[transfer_key] = transfer
         self._cancel_flags[transfer_key] = False
 
         try:
+            # Check for early cancellation before starting
+            if self._cancel_flags.get(transfer_key, False):
+                transfer.status = TransferStatus.CANCELLED
+                if self.on_transfer_cancelled:
+                    self.on_transfer_cancelled(transfer)
+                return transfer
+            
             # Calculate file hash
             transfer.status = TransferStatus.CONNECTING
             transfer.file_hash = await get_file_hash_async(file_path)
@@ -217,9 +239,14 @@ class TransferClient:
                 # Finalize transfer
                 if transfer.status == TransferStatus.TRANSFERRING:
                     await self._complete_transfer(session, transfer)
+                elif transfer.status == TransferStatus.CANCELLED:
+                    if self.on_transfer_cancelled:
+                        self.on_transfer_cancelled(transfer)
 
         except asyncio.CancelledError:
             transfer.status = TransferStatus.CANCELLED
+            if self.on_transfer_cancelled:
+                self.on_transfer_cancelled(transfer)
             raise
         except Exception as e:
             transfer.status = TransferStatus.FAILED
@@ -234,11 +261,27 @@ class TransferClient:
 
         return transfer
 
-    async def cancel_transfer(self, file_path: Path, peer_url: str) -> None:
-        """Cancel an ongoing transfer."""
+    async def cancel_transfer(self, file_path: Path, peer_url: str) -> bool:
+        """Cancel an ongoing transfer.
+        
+        Returns True if a transfer was found and marked for cancellation.
+        """
+        peer_url = peer_url.rstrip("/")
         transfer_key = f"{peer_url}:{file_path}"
         if transfer_key in self._cancel_flags:
             self._cancel_flags[transfer_key] = True
+            return True
+        return False
+    
+    def cancel_transfer_by_key(self, transfer_key: str) -> bool:
+        """Cancel an ongoing transfer by its internal key.
+        
+        Returns True if a transfer was found and marked for cancellation.
+        """
+        if transfer_key in self._cancel_flags:
+            self._cancel_flags[transfer_key] = True
+            return True
+        return False
 
     async def _init_transfer(
         self,
@@ -292,7 +335,7 @@ class TransferClient:
 
         transfer.status = TransferStatus.TRANSFERRING
         url = f"{transfer.peer_url}/transfer/chunk"
-        transfer_key = f"{transfer.peer_url}:{transfer.file_path}"
+        transfer_key = transfer._transfer_key
 
         retry_delay = INITIAL_RETRY_DELAY
         last_progress_time = asyncio.get_event_loop().time()

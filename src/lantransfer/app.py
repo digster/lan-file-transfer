@@ -115,6 +115,9 @@ class TransferCard(ft.Container):
         elif transfer.status == "retrying":
             status_color = COLORS["warning"]
             status_icon = ft.Icons.REFRESH
+        elif transfer.status == "cancelled":
+            status_color = COLORS["warning"]
+            status_icon = ft.Icons.CANCEL
 
         # Progress bar
         progress_bar = ft.ProgressBar(

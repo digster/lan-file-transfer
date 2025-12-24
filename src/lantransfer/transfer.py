@@ -156,6 +156,7 @@ class TransferManager:
         self.client.on_transfer_progress = self._on_outgoing_progress
         self.client.on_transfer_completed = self._on_outgoing_completed
         self.client.on_transfer_failed = self._on_outgoing_failed
+        self.client.on_transfer_cancelled = self._on_outgoing_cancelled
 
     def queue_send(self, path: Path, peer: Peer) -> str:
         """Queue a file or folder to be sent to a peer."""
@@ -200,11 +201,10 @@ class TransferManager:
 
         transfer.status = "cancelled"
         
-        # Cancel outgoing transfer if active
-        if transfer._outgoing and transfer._file_path:
-            asyncio.create_task(
-                self.client.cancel_transfer(transfer._file_path, transfer._outgoing.peer_url)
-            )
+        # Cancel outgoing transfer if active - use the stored transfer key for reliability
+        if transfer._outgoing and transfer._outgoing._transfer_key:
+            # Set the cancel flag immediately (synchronous)
+            self.client.cancel_transfer_by_key(transfer._outgoing._transfer_key)
 
         self._notify_queue_updated()
         return True
@@ -304,8 +304,10 @@ class TransferManager:
     def _on_outgoing_started(self, transfer: OutgoingTransfer) -> None:
         """Called when an outgoing transfer starts."""
         # Find the queued transfer by file path
+        # Use original_path for matching, which works for both files and folders
+        match_path = transfer.original_path if transfer.original_path else transfer.file_path
         for queued in self._queue.values():
-            if queued._file_path == transfer.file_path and queued.direction == TransferDirection.OUTGOING:
+            if queued._file_path == match_path and queued.direction == TransferDirection.OUTGOING:
                 queued._outgoing = transfer
                 queued.status = "connecting"
                 self._notify_queue_updated()
@@ -343,5 +345,13 @@ class TransferManager:
 
                 if self.on_transfer_failed:
                     self.on_transfer_failed(queued)
+                break
+
+    def _on_outgoing_cancelled(self, transfer: OutgoingTransfer) -> None:
+        """Called when outgoing transfer is cancelled."""
+        for queued in self._queue.values():
+            if queued._outgoing == transfer:
+                queued.status = "cancelled"
+                self._notify_queue_updated()
                 break
 

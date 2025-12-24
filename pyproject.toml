@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.0.0", "flet-cli>=0.25.0", "pip"]
+build = ["pyinstaller>=6.0.0", "flet-cli>=0.25.0", "flet-desktop>=0.25.0", "pip"]
 dev = ["ruff>=0.8.0", "mypy>=1.13.0"]
 
 [project.scripts]

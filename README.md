@@ -103,7 +103,7 @@ uv run mypy src/
 
 ### Building Executables
 
-Build a single-file executable for distribution:
+Build a distributable executable for your platform:
 
 ```bash
 # Install build dependencies
@@ -114,8 +114,10 @@ uv run python build.py
 ```
 
 The executable will be created in the `dist/` directory:
-- macOS: `dist/lantransfer-macos`
-- Linux: `dist/lantransfer-linux`
+- **macOS:** `dist/LANTransfer.app` (double-click to run)
+- **Linux:** `dist/LANTransfer` (run with `./LANTransfer`)
+
+Note: You must build on the target platform (build on macOS for macOS, build on Linux for Linux).
 
 ## Architecture
 

@@ -97,7 +97,7 @@ class TransferCard(ft.Container):
             direction_icon = ft.Icons.UPLOAD_FILE
             direction_text = f"→ {transfer.peer_name or transfer.peer_address}"
         else:
-            direction_icon = ft.Icons.DOWNLOAD_FILE
+            direction_icon = ft.Icons.FILE_DOWNLOAD
             direction_text = "← Receiving"
 
         # Status color and icon

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build script for creating single-file executables using PyInstaller."""
+"""Build script for creating distributable executables using Flet's packaging."""
 
 import platform
 import shutil
@@ -20,16 +20,8 @@ def get_platform_name() -> str:
     return system
 
 
-def get_executable_name() -> str:
-    """Get the executable name for the current platform."""
-    base_name = "lantransfer"
-    if platform.system() == "Windows":
-        return f"{base_name}.exe"
-    return base_name
-
-
 def build():
-    """Build the application using PyInstaller."""
+    """Build the application using flet pack."""
     print("=" * 60)
     print("Building LAN Transfer")
     print("=" * 60)
@@ -41,85 +33,85 @@ def build():
     build_dir = project_root / "build"
 
     # Clean previous builds
-    print("\n[1/4] Cleaning previous builds...")
+    print("\n[1/3] Cleaning previous builds...")
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
     if build_dir.exists():
         shutil.rmtree(build_dir)
+    
+    # Also clean any .spec files
+    for spec_file in project_root.glob("*.spec"):
+        spec_file.unlink()
 
-    # Ensure pyinstaller is available
-    print("\n[2/4] Checking PyInstaller...")
-    try:
-        import PyInstaller
-        print(f"  PyInstaller version: {PyInstaller.__version__}")
-    except ImportError:
-        print("  PyInstaller not found, installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller>=6.0.0"])
+    # Build using flet pack
+    print("\n[2/3] Building with flet pack...")
+    
+    platform_name = get_platform_name()
+    print(f"  Target platform: {platform_name}")
 
-    # Build the executable
-    print("\n[3/4] Building executable...")
-
-    # PyInstaller arguments
+    # Flet pack arguments - use flet CLI directly
+    flet_cmd = shutil.which("flet")
+    if not flet_cmd:
+        # Try to find flet in the venv
+        if platform.system() == "Windows":
+            flet_cmd = str(project_root / ".venv" / "Scripts" / "flet.exe")
+        else:
+            flet_cmd = str(project_root / ".venv" / "bin" / "flet")
+    
     args = [
-        sys.executable,
-        "-m", "PyInstaller",
-        "--onefile",  # Single file output
-        "--windowed",  # No console window (GUI app)
-        "--name", "lantransfer",
-        "--clean",
-        # Add Flet hidden imports
-        "--hidden-import", "flet",
-        "--hidden-import", "flet_core",
-        "--hidden-import", "flet_runtime",
-        "--hidden-import", "zeroconf",
-        "--hidden-import", "aiohttp",
-        "--hidden-import", "aiofiles",
-        # Collect all flet data files
-        "--collect-all", "flet",
-        "--collect-all", "flet_runtime",
-        # Add source directory to path
-        "--paths", str(src_dir),
-        # Entry point
+        flet_cmd, "pack",
         str(src_dir / "lantransfer" / "__main__.py"),
+        "--name", "LANTransfer",
+        "--add-data", f"{src_dir / 'lantransfer'}:lantransfer",
     ]
 
     # Platform-specific options
     if platform.system() == "Darwin":
-        # macOS specific - create app bundle
-        args.extend([
-            "--osx-bundle-identifier", "com.lantransfer.app",
-        ])
+        # macOS: Creates .app bundle
+        print("  Building macOS .app bundle...")
     elif platform.system() == "Linux":
-        # Linux specific
-        pass
+        # Linux: Creates executable
+        print("  Building Linux executable...")
+    elif platform.system() == "Windows":
+        # Windows: Creates .exe
+        print("  Building Windows executable...")
 
-    # Run PyInstaller
-    result = subprocess.run(args, cwd=project_root)
+    # Run flet pack
+    result = subprocess.run(args, cwd=project_root, input=b"y\n")
 
     if result.returncode != 0:
         print("\n❌ Build failed!")
         sys.exit(1)
 
-    # Rename output with platform suffix
-    print("\n[4/4] Finalizing...")
-    platform_name = get_platform_name()
-    exe_name = get_executable_name()
-
-    original_path = dist_dir / exe_name
-    final_name = f"lantransfer-{platform_name}"
-    if platform.system() == "Windows":
-        final_name += ".exe"
+    # Report results
+    print("\n[3/3] Finalizing...")
     
-    final_path = dist_dir / final_name
-
-    if original_path.exists():
-        original_path.rename(final_path)
-        print(f"\n✅ Build successful!")
-        print(f"   Output: {final_path}")
-        print(f"   Size: {final_path.stat().st_size / (1024*1024):.1f} MB")
+    if platform.system() == "Darwin":
+        app_path = dist_dir / "LANTransfer.app"
+        if app_path.exists():
+            # Calculate app size
+            total_size = sum(f.stat().st_size for f in app_path.rglob("*") if f.is_file())
+            print(f"\n✅ Build successful!")
+            print(f"   Output: {app_path}")
+            print(f"   Size: {total_size / (1024*1024):.1f} MB")
+            print(f"\n   To run: open {app_path}")
+            print(f"   Or double-click LANTransfer.app in Finder")
+        else:
+            print(f"\n⚠️  App bundle not found at expected location")
+            print(f"   Check {dist_dir} for output files")
     else:
-        print("\n❌ Output file not found!")
-        sys.exit(1)
+        exe_path = dist_dir / "LANTransfer"
+        if platform.system() == "Windows":
+            exe_path = dist_dir / "LANTransfer.exe"
+        
+        if exe_path.exists():
+            print(f"\n✅ Build successful!")
+            print(f"   Output: {exe_path}")
+            print(f"   Size: {exe_path.stat().st_size / (1024*1024):.1f} MB")
+            print(f"\n   To run: {exe_path}")
+        else:
+            print(f"\n⚠️  Executable not found at expected location")
+            print(f"   Check {dist_dir} for output files")
 
 
 def main():
@@ -129,5 +121,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

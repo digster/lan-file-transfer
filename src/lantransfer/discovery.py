@@ -2,6 +2,7 @@
 
 import asyncio
 import socket
+import threading
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -49,6 +50,7 @@ class DiscoveryService:
     _peers: dict[str, Peer] = field(default_factory=dict, init=False, repr=False)
     _running: bool = field(default=False, init=False, repr=False)
     _local_ip: str = field(default="", init=False, repr=False)
+    _loop: asyncio.AbstractEventLoop | None = field(default=None, init=False, repr=False)
 
     @property
     def peers(self) -> list[Peer]:
@@ -61,6 +63,7 @@ class DiscoveryService:
             return
 
         self._local_ip = get_local_ip()
+        self._loop = asyncio.get_running_loop()
         self._zeroconf = AsyncZeroconf(ip_version=IPVersion.V4Only)
 
         # Register our service
@@ -147,16 +150,17 @@ class DiscoveryService:
 
         if name not in self._peers:
             self._peers[name] = peer
-            if self.on_peer_added:
-                # Call callback in the event loop
-                asyncio.get_event_loop().call_soon(self.on_peer_added, peer)
+            if self.on_peer_added and self._loop:
+                # Thread-safe callback to main event loop
+                self._loop.call_soon_threadsafe(self.on_peer_added, peer)
 
     def _remove_peer(self, name: str) -> None:
         """Remove a peer that went offline."""
         if name in self._peers:
             peer = self._peers.pop(name)
-            if self.on_peer_removed:
-                asyncio.get_event_loop().call_soon(self.on_peer_removed, peer)
+            if self.on_peer_removed and self._loop:
+                # Thread-safe callback to main event loop
+                self._loop.call_soon_threadsafe(self.on_peer_removed, peer)
 
 
 class _PeerListener(ServiceListener):

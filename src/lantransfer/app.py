@@ -36,11 +36,11 @@ class DeviceCard(ft.Container):
         self._selected = False
 
         # Device icon based on name hints
-        icon = ft.icons.COMPUTER
+        icon = ft.Icons.COMPUTER
         if "mac" in peer.name.lower() or "book" in peer.name.lower():
-            icon = ft.icons.LAPTOP_MAC
+            icon = ft.Icons.LAPTOP_MAC
         elif "linux" in peer.name.lower() or "ubuntu" in peer.name.lower():
-            icon = ft.icons.COMPUTER
+            icon = ft.Icons.COMPUTER
 
         super().__init__(
             content=ft.Row(
@@ -94,27 +94,27 @@ class TransferCard(ft.Container):
 
         # Direction icon
         if transfer.direction == TransferDirection.OUTGOING:
-            direction_icon = ft.icons.UPLOAD_FILE
+            direction_icon = ft.Icons.UPLOAD_FILE
             direction_text = f"→ {transfer.peer_name or transfer.peer_address}"
         else:
-            direction_icon = ft.icons.DOWNLOAD_FILE
+            direction_icon = ft.Icons.DOWNLOAD_FILE
             direction_text = "← Receiving"
 
         # Status color and icon
         status_color = COLORS["text_secondary"]
-        status_icon = ft.icons.HOURGLASS_EMPTY
+        status_icon = ft.Icons.HOURGLASS_EMPTY
         if transfer.status == "transferring":
             status_color = COLORS["primary"]
-            status_icon = ft.icons.SYNC
+            status_icon = ft.Icons.SYNC
         elif transfer.status == "completed":
             status_color = COLORS["success"]
-            status_icon = ft.icons.CHECK_CIRCLE
+            status_icon = ft.Icons.CHECK_CIRCLE
         elif transfer.status == "failed":
             status_color = COLORS["error"]
-            status_icon = ft.icons.ERROR
+            status_icon = ft.Icons.ERROR
         elif transfer.status == "retrying":
             status_color = COLORS["warning"]
-            status_icon = ft.icons.REFRESH
+            status_icon = ft.Icons.REFRESH
 
         # Progress bar
         progress_bar = ft.ProgressBar(
@@ -136,7 +136,7 @@ class TransferCard(ft.Container):
         cancel_btn = None
         if transfer.is_active or transfer.status == "pending":
             cancel_btn = ft.IconButton(
-                icon=ft.icons.CLOSE,
+                icon=ft.Icons.CLOSE,
                 icon_color=COLORS["text_secondary"],
                 icon_size=18,
                 tooltip="Cancel",
@@ -274,7 +274,7 @@ class LANTransferApp:
                 [
                     ft.Row(
                         [
-                            ft.Icon(ft.icons.SWAP_HORIZ, color=COLORS["primary"], size=28),
+                            ft.Icon(ft.Icons.SWAP_HORIZ, color=COLORS["primary"], size=28),
                             ft.Text(
                                 __app_name__,
                                 size=20,
@@ -287,13 +287,13 @@ class LANTransferApp:
                     ft.Row(
                         [
                             ft.IconButton(
-                                icon=ft.icons.FOLDER_OPEN,
+                                icon=ft.Icons.FOLDER_OPEN,
                                 icon_color=COLORS["text_secondary"],
                                 tooltip="Open downloads folder",
                                 on_click=self._open_downloads,
                             ),
                             ft.IconButton(
-                                icon=ft.icons.SETTINGS,
+                                icon=ft.Icons.SETTINGS,
                                 icon_color=COLORS["text_secondary"],
                                 tooltip="Settings",
                             ),
@@ -324,7 +324,7 @@ class LANTransferApp:
                                 color=COLORS["text"],
                             ),
                             ft.IconButton(
-                                icon=ft.icons.REFRESH,
+                                icon=ft.Icons.REFRESH,
                                 icon_color=COLORS["text_secondary"],
                                 icon_size=18,
                                 tooltip="Refresh",
@@ -356,7 +356,7 @@ class LANTransferApp:
         self._empty_transfers = ft.Container(
             content=ft.Column(
                 [
-                    ft.Icon(ft.icons.CLOUD_QUEUE, color=COLORS["text_secondary"], size=48),
+                    ft.Icon(ft.Icons.CLOUD_QUEUE, color=COLORS["text_secondary"], size=48),
                     ft.Text(
                         "No active transfers",
                         size=14,
@@ -411,7 +411,7 @@ class LANTransferApp:
         self._drop_zone = ft.Container(
             content=ft.Column(
                 [
-                    ft.Icon(ft.icons.CLOUD_UPLOAD, color=COLORS["text_secondary"], size=36),
+                    ft.Icon(ft.Icons.CLOUD_UPLOAD, color=COLORS["text_secondary"], size=36),
                     ft.Text(
                         "Drop files here or click to browse",
                         size=14,
@@ -446,7 +446,7 @@ class LANTransferApp:
         status_bar = ft.Container(
             content=ft.Row(
                 [
-                    ft.Icon(ft.icons.CIRCLE, color=COLORS["success"], size=10),
+                    ft.Icon(ft.Icons.CIRCLE, color=COLORS["success"], size=10),
                     self._status_text,
                 ],
                 spacing=8,

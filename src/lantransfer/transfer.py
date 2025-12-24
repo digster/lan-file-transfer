@@ -316,7 +316,9 @@ class TransferManager:
     def _on_outgoing_progress(self, transfer: OutgoingTransfer) -> None:
         """Called when outgoing transfer progresses."""
         for queued in self._queue.values():
-            if queued._outgoing == transfer:
+            # Use 'is' for identity comparison since OutgoingTransfer is a dataclass
+            # and '==' would compare all fields which may have changed
+            if queued._outgoing is transfer:
                 queued.transferred_bytes = transfer.sent_bytes
                 queued.status = transfer.status.value
                 queued.speed = transfer.speed
@@ -326,9 +328,12 @@ class TransferManager:
     def _on_outgoing_completed(self, transfer: OutgoingTransfer) -> None:
         """Called when outgoing transfer completes."""
         for queued in self._queue.values():
-            if queued._outgoing == transfer:
+            # Use 'is' for identity comparison since OutgoingTransfer is a dataclass
+            if queued._outgoing is transfer:
                 queued.status = "completed"
-                queued.transferred_bytes = transfer.total_size
+                # Set transferred_bytes to queued.total_size to show 100% progress
+                # (for folders, transfer.total_size is tarball size which differs from folder size)
+                queued.transferred_bytes = queued.total_size
                 self._notify_queue_updated()
 
                 if self.on_transfer_completed:
@@ -338,7 +343,8 @@ class TransferManager:
     def _on_outgoing_failed(self, transfer: OutgoingTransfer, error: str) -> None:
         """Called when outgoing transfer fails."""
         for queued in self._queue.values():
-            if queued._outgoing == transfer:
+            # Use 'is' for identity comparison since OutgoingTransfer is a dataclass
+            if queued._outgoing is transfer:
                 queued.status = "failed"
                 queued.error = error
                 self._notify_queue_updated()
@@ -350,7 +356,8 @@ class TransferManager:
     def _on_outgoing_cancelled(self, transfer: OutgoingTransfer) -> None:
         """Called when outgoing transfer is cancelled."""
         for queued in self._queue.values():
-            if queued._outgoing == transfer:
+            # Use 'is' for identity comparison since OutgoingTransfer is a dataclass
+            if queued._outgoing is transfer:
                 queued.status = "cancelled"
                 self._notify_queue_updated()
                 break

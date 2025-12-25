@@ -46,6 +46,8 @@ class TransferServer:
     on_transfer_progress: Callable[[IncomingTransfer], None] | None = None
     on_transfer_completed: Callable[[IncomingTransfer], None] | None = None
     on_transfer_failed: Callable[[IncomingTransfer, str], None] | None = None
+    on_extracting_started: Callable[[IncomingTransfer], None] | None = None
+    on_extracting_completed: Callable[[IncomingTransfer], None] | None = None
 
     _app: web.Application | None = field(default=None, init=False, repr=False)
     _runner: web.AppRunner | None = field(default=None, init=False, repr=False)
@@ -300,11 +302,23 @@ class TransferServer:
                 import shutil
                 shutil.move(str(transfer.temp_path), str(transfer.final_path))
 
-        # Auto-extract tar.gz files (folder transfers)
+        # Auto-extract tar/tar.gz files (folder transfers)
         extracted_path = None
-        if transfer.final_path and transfer.final_path.suffix == ".gz" and ".tar" in transfer.final_path.name:
+        is_tarball = transfer.final_path and (
+            transfer.final_path.suffix == ".tar" or
+            (transfer.final_path.suffix == ".gz" and ".tar" in transfer.final_path.name)
+        )
+        if is_tarball:
             try:
+                # Notify extraction started
+                if self.on_extracting_started:
+                    self.on_extracting_started(transfer)
+                
                 extracted_path = await self._extract_tarball(transfer.final_path)
+                
+                # Notify extraction completed
+                if self.on_extracting_completed:
+                    self.on_extracting_completed(transfer)
             except Exception:
                 # Extraction failed, keep the tarball
                 pass
@@ -367,6 +381,12 @@ class TransferServer:
     async def _extract_tarball(self, tarball_path: Path) -> Path:
         """Extract a tarball and return the path to the extracted folder."""
         extract_dir = tarball_path.parent
+        
+        # Determine the open mode based on file extension
+        if tarball_path.suffix == ".gz":
+            mode = "r:gz"
+        else:
+            mode = "r:"
 
         # Extract in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
@@ -375,10 +395,11 @@ class TransferServer:
             self._do_extract,
             tarball_path,
             extract_dir,
+            mode,
         )
 
         # Find the extracted folder name (first entry in the tarball)
-        with tarfile.open(tarball_path, "r:gz") as tar:
+        with tarfile.open(tarball_path, mode) as tar:
             first_member = tar.getmembers()[0]
             extracted_name = first_member.name.split("/")[0]
 
@@ -387,8 +408,8 @@ class TransferServer:
 
         return extract_dir / extracted_name
 
-    def _do_extract(self, tarball_path: Path, extract_dir: Path) -> None:
+    def _do_extract(self, tarball_path: Path, extract_dir: Path, mode: str) -> None:
         """Extract tarball synchronously."""
-        with tarfile.open(tarball_path, "r:gz") as tar:
+        with tarfile.open(tarball_path, mode) as tar:
             tar.extractall(path=extract_dir)
 

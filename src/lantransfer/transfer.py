@@ -33,6 +33,8 @@ class QueuedTransfer:
     peer_address: str = ""
     error: str | None = None
     speed: float = 0.0
+    is_tarring: bool = False  # True while packing folder into tar
+    is_extracting: bool = False  # True while extracting tar on receive
     
     # Internal references
     _outgoing: OutgoingTransfer | None = field(default=None, repr=False)
@@ -74,7 +76,7 @@ class QueuedTransfer:
     @property
     def is_active(self) -> bool:
         """Check if transfer is actively running."""
-        return self.status in ("connecting", "transferring", "retrying", "verifying")
+        return self.status in ("connecting", "transferring", "retrying", "verifying", "tarring", "extracting")
 
 
 @dataclass
@@ -150,6 +152,8 @@ class TransferManager:
         self.server.on_transfer_progress = self._on_incoming_progress
         self.server.on_transfer_completed = self._on_incoming_completed
         self.server.on_transfer_failed = self._on_incoming_failed
+        self.server.on_extracting_started = self._on_extracting_started
+        self.server.on_extracting_completed = self._on_extracting_completed
 
         # Client callbacks
         self.client.on_transfer_started = self._on_outgoing_started
@@ -157,6 +161,8 @@ class TransferManager:
         self.client.on_transfer_completed = self._on_outgoing_completed
         self.client.on_transfer_failed = self._on_outgoing_failed
         self.client.on_transfer_cancelled = self._on_outgoing_cancelled
+        self.client.on_tarring_started = self._on_tarring_started
+        self.client.on_tarring_completed = self._on_tarring_completed
 
     def queue_send(self, path: Path, peer: Peer) -> str:
         """Queue a file or folder to be sent to a peer."""
@@ -361,4 +367,40 @@ class TransferManager:
                 queued.status = "cancelled"
                 self._notify_queue_updated()
                 break
+
+    # Tarring callbacks (outgoing folder transfers)
+    def _on_tarring_started(self, folder_path: Path) -> None:
+        """Called when tarring starts for a folder transfer."""
+        for queued in self._queue.values():
+            if queued._file_path == folder_path and queued.direction == TransferDirection.OUTGOING:
+                queued.is_tarring = True
+                queued.status = "tarring"
+                self._notify_queue_updated()
+                break
+
+    def _on_tarring_completed(self, folder_path: Path) -> None:
+        """Called when tarring completes for a folder transfer."""
+        for queued in self._queue.values():
+            if queued._file_path == folder_path and queued.direction == TransferDirection.OUTGOING:
+                queued.is_tarring = False
+                self._notify_queue_updated()
+                break
+
+    # Extracting callbacks (incoming folder transfers)
+    def _on_extracting_started(self, transfer: IncomingTransfer) -> None:
+        """Called when extraction starts for an incoming folder transfer."""
+        queue_id = transfer.transfer_id
+        if queue_id in self._queue:
+            queued = self._queue[queue_id]
+            queued.is_extracting = True
+            queued.status = "extracting"
+            self._notify_queue_updated()
+
+    def _on_extracting_completed(self, transfer: IncomingTransfer) -> None:
+        """Called when extraction completes for an incoming folder transfer."""
+        queue_id = transfer.transfer_id
+        if queue_id in self._queue:
+            queued = self._queue[queue_id]
+            queued.is_extracting = False
+            self._notify_queue_updated()
 

@@ -103,7 +103,17 @@ class TransferCard(ft.Container):
         # Status color and icon
         status_color = COLORS["text_secondary"]
         status_icon = ft.Icons.HOURGLASS_EMPTY
-        if transfer.status == "transferring":
+        status_text = transfer.status.title()
+        
+        if transfer.status == "tarring":
+            status_color = COLORS["secondary"]
+            status_icon = ft.Icons.FOLDER_ZIP
+            status_text = "Packing..."
+        elif transfer.status == "extracting":
+            status_color = COLORS["secondary"]
+            status_icon = ft.Icons.FOLDER_OPEN
+            status_text = "Extracting..."
+        elif transfer.status == "transferring":
             status_color = COLORS["primary"]
             status_icon = ft.Icons.SYNC
         elif transfer.status == "completed":
@@ -119,9 +129,12 @@ class TransferCard(ft.Container):
             status_color = COLORS["warning"]
             status_icon = ft.Icons.CANCEL
 
-        # Progress bar
+        # Progress bar - indeterminate for tarring/extracting, determinate otherwise
+        is_indeterminate = transfer.status in ("tarring", "extracting")
         progress_bar = ft.ProgressBar(
-            value=transfer.progress / 100 if transfer.is_active else (1 if transfer.status == "completed" else 0),
+            value=None if is_indeterminate else (
+                transfer.progress / 100 if transfer.is_active else (1 if transfer.status == "completed" else 0)
+            ),
             color=status_color,
             bgcolor=COLORS["surface"],
             height=4,
@@ -175,7 +188,7 @@ class TransferCard(ft.Container):
                                 [
                                     ft.Icon(status_icon, color=status_color, size=16),
                                     ft.Text(
-                                        transfer.status.title(),
+                                        status_text,
                                         size=11,
                                         color=status_color,
                                     ),

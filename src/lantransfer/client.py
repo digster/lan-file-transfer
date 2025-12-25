@@ -78,6 +78,8 @@ class TransferClient:
     on_transfer_completed: Callable[[OutgoingTransfer], None] | None = None
     on_transfer_failed: Callable[[OutgoingTransfer, str], None] | None = None
     on_transfer_cancelled: Callable[[OutgoingTransfer], None] | None = None
+    on_tarring_started: Callable[[Path], None] | None = None
+    on_tarring_completed: Callable[[Path], None] | None = None
 
     _active_transfers: dict[str, OutgoingTransfer] = field(
         default_factory=dict, init=False, repr=False
@@ -124,12 +126,16 @@ class TransferClient:
         Returns:
             OutgoingTransfer object with final status
         """
-        # Create a temporary tarball
+        # Create a temporary tarball (uncompressed for speed)
         temp_dir = tempfile.mkdtemp()
-        tarball_name = f"{folder_path.name}.tar.gz"
+        tarball_name = f"{folder_path.name}.tar"
         tarball_path = Path(temp_dir) / tarball_name
 
         try:
+            # Notify tarring started
+            if self.on_tarring_started:
+                self.on_tarring_started(folder_path)
+            
             # Create tarball in a thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -138,6 +144,10 @@ class TransferClient:
                 folder_path,
                 tarball_path,
             )
+            
+            # Notify tarring completed
+            if self.on_tarring_completed:
+                self.on_tarring_completed(folder_path)
 
             # Send the tarball, passing the original folder path for matching
             transfer = await self.send_file(tarball_path, peer_url, original_path=folder_path)
@@ -155,8 +165,8 @@ class TransferClient:
                 os.rmdir(temp_dir)
 
     def _create_tarball(self, folder_path: Path, tarball_path: Path) -> None:
-        """Create a compressed tarball of a folder."""
-        with tarfile.open(tarball_path, "w:gz") as tar:
+        """Create an uncompressed tarball of a folder (faster than gzip)."""
+        with tarfile.open(tarball_path, "w:") as tar:
             tar.add(folder_path, arcname=folder_path.name)
 
     async def send_file(

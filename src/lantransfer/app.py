@@ -423,13 +423,13 @@ class LANTransferApp:
             border_radius=12,
         )
 
-        # Drop zone
+        # File selection zone
         self._drop_zone = ft.Container(
             content=ft.Column(
                 [
-                    ft.Icon(ft.Icons.CLOUD_UPLOAD, color=COLORS["text_secondary"], size=36),
+                    ft.Icon(ft.Icons.FOLDER_OPEN, color=COLORS["text_secondary"], size=36),
                     ft.Text(
-                        "Drop files here or click to browse",
+                        "Click to select files",
                         size=14,
                         color=COLORS["text_secondary"],
                     ),
@@ -509,10 +509,7 @@ class LANTransferApp:
             )
         )
 
-        # Setup drag and drop from OS
-        self.page.on_file_drop = self._on_file_drop
-        self.page.on_file_drag_enter = self._on_file_drag_enter
-        self.page.on_file_drag_leave = self._on_file_drag_leave
+        # Setup keyboard events
         self.page.on_keyboard_event = self._handle_keyboard
 
     def _on_peer_added(self, peer: Peer):
@@ -688,56 +685,6 @@ class LANTransferApp:
             subprocess.run(["open", str(downloads)])
         elif sys.platform == "linux":
             subprocess.run(["xdg-open", str(downloads)])
-
-    def _on_file_drag_enter(self, e: ft.ControlEvent):
-        """Handle files being dragged over the window."""
-        # Highlight drop zone
-        self._drop_zone.bgcolor = COLORS["surface_variant"]
-        self._drop_zone.border = ft.border.all(
-            2,
-            COLORS["primary"] if self._selected_peer else COLORS["warning"],
-        )
-        self._drop_zone.content.controls[0].color = COLORS["primary"]
-        self._drop_zone.content.controls[1].value = "Drop files to send"
-        self.page.update()
-
-    def _on_file_drag_leave(self, e: ft.ControlEvent):
-        """Handle files leaving the drag area."""
-        # Reset drop zone appearance
-        self._drop_zone.bgcolor = COLORS["surface"]
-        self._drop_zone.content.controls[0].color = COLORS["text_secondary"]
-        self._drop_zone.content.controls[1].value = "Drop files here or click to browse"
-        self._update_drop_zone()
-        self.page.update()
-
-    def _on_file_drop(self, e: ft.ControlEvent):
-        """Handle files dropped from the OS."""
-        # Reset drop zone appearance
-        self._drop_zone.bgcolor = COLORS["surface"]
-        self._drop_zone.content.controls[0].color = COLORS["text_secondary"]
-        self._drop_zone.content.controls[1].value = "Drop files here or click to browse"
-        self._update_drop_zone()
-
-        if not self._selected_peer:
-            self.page.show_snack_bar(
-                ft.SnackBar(
-                    content=ft.Text("Please select a device first"),
-                    bgcolor=COLORS["warning"],
-                )
-            )
-            self.page.update()
-            return
-
-        if not self._transfer_manager:
-            return
-
-        # Queue each dropped file/folder for transfer
-        for file_path_str in e.files:
-            file_path = Path(file_path_str)
-            if file_path.exists():
-                self._transfer_manager.queue_send(file_path, self._selected_peer)
-
-        self.page.update()
 
     def _handle_keyboard(self, e: ft.KeyboardEvent):
         """Handle keyboard events."""
